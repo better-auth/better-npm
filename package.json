@@ -1,0 +1,11 @@
+{
+  "name": "better-npm",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './packages/*' dev",
+    "dev:registry": "pnpm --filter @better-npm/registry dev",
+    "dev:web": "pnpm --filter @better-npm/web dev",
+    "deploy:registry": "pnpm --filter @better-npm/registry deploy",
+    "build": "pnpm --filter './packages/*' build"
+  }
+}

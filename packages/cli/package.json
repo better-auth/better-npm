@@ -1,0 +1,22 @@
+{
+  "name": "better-npm",
+  "version": "0.1.0",
+  "description": "Curated npm registry — every package is AI-reviewed before it reaches you",
+  "type": "module",
+  "bin": {
+    "better-npm": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup src/index.ts --format esm"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "open": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsup": "latest",
+    "typescript": "latest"
+  }
+}

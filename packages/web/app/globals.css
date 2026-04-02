@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: #000000;
+  --color-foreground: #ededed;
+  --color-muted: #111111;
+  --color-border: #1a1a1a;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+::selection {
+  background: var(--color-foreground);
+  color: var(--color-background);
+}
+
+@keyframes glitch-shift {
+  0%, 100% { transform: translate(0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, -2px); }
+  80% { transform: translate(2px, 3px); }
+}
+
+@keyframes glitch-color {
+  0%, 100% { text-shadow: none; }
+  20% { text-shadow: -2px 0 #ff003c, 2px 0 #00fff2; }
+  40% { text-shadow: 2px 0 #ff003c, -2px 0 #00fff2; }
+  60% { text-shadow: -1px 1px #ff003c, 1px -1px #00fff2; }
+  80% { text-shadow: 1px 0 #00fff2, -1px 0 #ff003c; }
+}
+
+@keyframes glitch-ambient {
+  0%, 92%, 100% { transform: translate(0); text-shadow: none; }
+  93% { transform: translate(-2px, 1px); text-shadow: -2px 0 #ff003c80, 2px 0 #00fff280; }
+  94% { transform: translate(2px, -1px); text-shadow: 2px 0 #ff003c80, -2px 0 #00fff280; }
+  95% { transform: translate(0); text-shadow: none; }
+}
+
+@keyframes glitch-ambient-alt {
+  0%, 85%, 100% { transform: translate(0); text-shadow: none; }
+  86% { transform: translate(1px, -2px); text-shadow: -1px 0 #00fff280, 1px 0 #ff003c80; }
+  87% { transform: translate(-1px, 1px); text-shadow: 1px 0 #00fff280, -1px 0 #ff003c80; }
+  88% { transform: translate(0); text-shadow: none; }
+}
+
+@keyframes scanline-move {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(200%); }
+}
+
+@keyframes flicker {
+  0%, 94%, 100% { opacity: 1; }
+  95% { opacity: 0.4; }
+  96% { opacity: 0.8; }
+  97% { opacity: 0.5; }
+  98% { opacity: 1; }
+}
+
+.glitch-grid-cell {
+  position: relative;
+  overflow: hidden;
+}
+
+.glitch-grid-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.015) 2px,
+    rgba(255, 255, 255, 0.015) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.glitch-grid-cell:nth-child(1) .glitch-title { animation: glitch-ambient 6s steps(3) infinite; }
+.glitch-grid-cell:nth-child(3) .glitch-title { animation: glitch-ambient-alt 5s steps(3) infinite 1s; }
+.glitch-grid-cell:nth-child(5) .glitch-title { animation: glitch-ambient 7s steps(3) infinite 2.5s; }
+.glitch-grid-cell:nth-child(2) .glitch-detail { animation: glitch-ambient-alt 8s steps(3) infinite 0.5s; }
+.glitch-grid-cell:nth-child(4) .glitch-detail { animation: glitch-ambient 5.5s steps(3) infinite 1.5s; }
+.glitch-grid-cell:nth-child(6) .glitch-detail { animation: glitch-ambient-alt 6.5s steps(3) infinite 3s; }
+
+.glitch-grid-cell:hover .glitch-title {
+  animation: glitch-color 0.2s steps(2) infinite, glitch-shift 0.3s steps(3) infinite !important;
+}
+
+.glitch-grid-cell:hover .glitch-detail {
+  animation: glitch-shift 0.2s steps(4) infinite, glitch-color 0.3s steps(2) infinite !important;
+}
+
+.glitch-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(to bottom, transparent, rgba(0, 255, 242, 0.07), transparent);
+  opacity: 0.6;
+  animation: scanline-move 3s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.glitch-grid-cell:nth-child(2) .glitch-scanline { animation-duration: 4s; animation-delay: 0.5s; }
+.glitch-grid-cell:nth-child(3) .glitch-scanline { animation-duration: 3.5s; animation-delay: 1s; }
+.glitch-grid-cell:nth-child(4) .glitch-scanline { animation-duration: 4.5s; animation-delay: 0.2s; }
+.glitch-grid-cell:nth-child(5) .glitch-scanline { animation-duration: 3.2s; animation-delay: 1.5s; }
+.glitch-grid-cell:nth-child(6) .glitch-scanline { animation-duration: 5s; animation-delay: 0.8s; }
+
+.glitch-grid-cell:hover .glitch-scanline {
+  opacity: 1;
+  background: linear-gradient(to bottom, transparent, rgba(0, 255, 242, 0.15), transparent);
+}
+
+.flicker-cell:nth-child(1) { animation: flicker 5s infinite 0.3s; }
+.flicker-cell:nth-child(2) { animation: flicker 4s infinite 1.5s; }
+.flicker-cell:nth-child(3) { animation: flicker 6s infinite 0.8s; }
+.flicker-cell:nth-child(4) { animation: flicker 3.5s infinite 2s; }
+.flicker-cell:nth-child(5) { animation: flicker 4.5s infinite 0.5s; }
+.flicker-cell:nth-child(6) { animation: flicker 5.5s infinite 1s; }

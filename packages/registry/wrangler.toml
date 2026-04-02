@@ -1,0 +1,50 @@
+name = "better-npm-registry"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+UPSTREAM_REGISTRY = "https://registry.npmjs.org"
+STRIPE_PRICE_ID = "price_1TGyNhHXHFIx3oPgYRTC86TB"
+REGISTRY_URL = "https://registry.better-npm.dev"
+WEB_APP_URL = "https://better-npm.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "better-npm"
+database_id = "ab12aaa3-949a-4ea6-ab94-51ca0dbe5941"
+
+[[r2_buckets]]
+binding = "TARBALLS"
+bucket_name = "better-npm-tarballs"
+
+[triggers]
+crons = ["*/1 * * * *"]
+
+# ── Production overrides ────────────────────────────────────────────
+# Uncomment and fill in after creating CF resources:
+#
+# [env.production.vars]
+# UPSTREAM_REGISTRY = "https://registry.npmjs.org"
+#
+# [[env.production.d1_databases]]
+# binding = "DB"
+# database_name = "better-npm"
+# database_id = "<your-d1-id>"
+#
+# [[env.production.r2_buckets]]
+# binding = "TARBALLS"
+# bucket_name = "better-npm-tarballs"
+#
+# [[env.production.queues.producers]]
+# binding = "REVIEW_QUEUE"
+# queue = "better-npm-reviews"
+#
+# [[env.production.queues.consumers]]
+# queue = "better-npm-reviews"
+# max_batch_size = 5
+# max_batch_timeout = 10
+
+[observability]
+[observability.logs]
+enabled = false
+invocation_logs = true

@@ -1,0 +1,23 @@
+{
+  "name": "@better-npm/registry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 execute better-npm --local --file=./migrations/0001_init.sql",
+    "db:migrate:remote": "wrangler d1 execute better-npm --remote --file=./migrations/0001_init.sql"
+  },
+  "dependencies": {
+    "ai": "latest",
+    "@ai-sdk/openai": "latest",
+    "hono": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+}
