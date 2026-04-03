@@ -1,29 +1,31 @@
 {
-  "name": "@better-npm/web",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "@radix-ui/react-icons": "^1.3.2",
-    "better-auth": "^1.5.6",
-    "better-sqlite3": "^12.8.0",
-    "geist": "latest",
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "latest",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "tailwindcss": "latest",
-    "typescript": "latest"
-  }
+	"name": "@better-npm/web",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "next dev",
+		"build": "next build",
+		"start": "next start",
+		"auth:migrate": "pnpm dlx @better-auth/cli migrate",
+		"db:apply-device-code": "sqlite3 better-npm.db < scripts/sql/device-code-table.sql"
+	},
+	"dependencies": {
+		"@radix-ui/react-icons": "^1.3.2",
+		"better-auth": "^1.5.6",
+		"better-sqlite3": "^12.8.0",
+		"geist": "latest",
+		"next": "latest",
+		"react": "latest",
+		"react-dom": "latest"
+	},
+	"devDependencies": {
+		"@tailwindcss/postcss": "latest",
+		"@types/better-sqlite3": "^7.6.13",
+		"@types/node": "latest",
+		"@types/react": "latest",
+		"@types/react-dom": "latest",
+		"tailwindcss": "latest",
+		"typescript": "latest"
+	}
 }
