@@ -1,11 +1,15 @@
 import * as p from "@clack/prompts";
 import open from "open";
+import { createAuthClient } from "better-auth/client";
+import { deviceAuthorizationClient } from "better-auth/client/plugins";
 import {
   WEB_URL,
   REGISTRY_URL,
   getExistingToken,
   writeToken,
 } from "../config.js";
+
+const CLI_CLIENT_ID = "better-npm-cli";
 
 export async function init() {
   p.intro("better-npm");
@@ -17,7 +21,10 @@ export async function init() {
     }).catch(() => null);
 
     if (res?.ok) {
-      const data: any = await res.json();
+      const data = (await res.json()) as {
+        email: string;
+        subscription: string;
+      };
       p.note(
         `Email: ${data.email}\nSubscription: ${data.subscription}`,
         "Already set up",
@@ -40,33 +47,44 @@ export async function init() {
     process.exit(0);
   }
 
+  const authClient = createAuthClient({
+    baseURL: WEB_URL,
+    plugins: [deviceAuthorizationClient()],
+  });
+
   const s = p.spinner();
   s.start("Connecting to better-npm");
 
-  let deviceRes: Response;
-  try {
-    deviceRes = await fetch(`${WEB_URL}/api/device`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope }),
-    });
-  } catch {
-    s.stop("Could not reach better-npm");
-    p.cancel("Check your connection and try again.");
-    process.exit(1);
-  }
+  const codeResult = await authClient.device.code({
+    client_id: CLI_CLIENT_ID,
+    scope: "openid profile email",
+  });
 
-  if (!deviceRes.ok) {
+  if (codeResult.error || !codeResult.data) {
     s.stop("Something went wrong");
-    p.cancel("Try again.");
+    p.cancel(
+      codeResult.error?.error_description ||
+        "Could not start device login. Try again.",
+    );
     process.exit(1);
   }
 
-  const device: any = await deviceRes.json();
+  const {
+    device_code,
+    user_code,
+    verification_uri,
+    verification_uri_complete,
+    expires_in: expiresInRaw = 1800,
+    interval: intervalRaw = 5,
+  } = codeResult.data;
+
+  const expires_in = Number(expiresInRaw);
+  const interval = Number(intervalRaw);
+
   s.stop("Connected");
 
   p.note(
-    `Code: ${device.user_code}`,
+    `Code: ${user_code}`,
     "Confirm this code in your browser",
   );
 
@@ -79,22 +97,54 @@ export async function init() {
     process.exit(0);
   }
 
-  await open(device.verification_url);
+  const openUrl = verification_uri_complete || verification_uri;
+  await open(openUrl);
 
   const pollSpinner = p.spinner();
   pollSpinner.start("Waiting for sign in...");
 
-  const token = await pollForToken(device.device_code, device.expires_in * 1000);
+  const accessToken = await pollForDeviceAccessToken(
+    authClient,
+    device_code,
+    interval,
+    (Number.isFinite(expires_in) ? expires_in : 1800) * 1000,
+  );
 
-  if (!token) {
+  if (!accessToken) {
     pollSpinner.stop("Timed out");
     p.cancel("Run `npx better-npm` to try again.");
     process.exit(1);
   }
 
+  let registryRes: Response;
+  try {
+    registryRes = await fetch(`${WEB_URL}/api/cli/registry-token`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    pollSpinner.stop("Network error");
+    p.cancel("Could not reach better-npm to finish setup.");
+    process.exit(1);
+  }
+
+  if (!registryRes.ok) {
+    pollSpinner.stop("Setup failed");
+    const err = await registryRes.json().catch(() => ({}));
+    p.cancel(
+      (err as { error?: string }).error ||
+        "Could not create registry token. Try again.",
+    );
+    process.exit(1);
+  }
+
+  const { token: registryToken } = (await registryRes.json()) as {
+    token: string;
+  };
+
   pollSpinner.stop("Signed in");
 
-  writeToken(token, scope as "local" | "global");
+  writeToken(registryToken, scope as "local" | "global");
 
   const target = scope === "global" ? "~/.npmrc" : "./.npmrc";
   const msg =
@@ -106,26 +156,43 @@ export async function init() {
   p.outro("Packages are reviewed before they reach you. Go build something.");
 }
 
-async function pollForToken(
+async function pollForDeviceAccessToken(
+  authClient: ReturnType<typeof createAuthClient>,
   deviceCode: string,
+  intervalSec: number,
   timeoutMs: number,
 ): Promise<string | null> {
   const start = Date.now();
+  let pollingIntervalSec = Number.isFinite(intervalSec) && intervalSec > 0 ? intervalSec : 5;
 
   while (Date.now() - start < timeoutMs) {
-    await sleep(2000);
+    await sleep(pollingIntervalSec * 1000);
 
-    const res = await fetch(
-      `${WEB_URL}/api/device?device_code=${deviceCode}`,
-    ).catch(() => null);
+    const { data, error } = await authClient.device.token({
+      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      device_code: deviceCode,
+      client_id: CLI_CLIENT_ID,
+    });
 
-    if (!res) continue;
+    if (data?.access_token) {
+      return data.access_token;
+    }
 
-    if (res.status === 410) return null;
-    if (!res.ok) continue;
+    if (!error) continue;
 
-    const data: any = await res.json();
-    if (data.token) return data.token;
+    switch (error.error) {
+      case "authorization_pending":
+        break;
+      case "slow_down":
+        pollingIntervalSec += 5;
+        break;
+      case "access_denied":
+        return null;
+      case "expired_token":
+        return null;
+      default:
+        return null;
+    }
   }
 
   return null;

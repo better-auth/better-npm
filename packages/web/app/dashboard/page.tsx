@@ -49,7 +49,15 @@ function Header({ session }: { session: any }) {
         <p className="text-sm text-foreground/40 mt-0.5">{session.user.email}</p>
       </div>
       <button
-        onClick={() => signOut({ fetchOptions: { onSuccess: () => window.location.href = "/" } })}
+        onClick={() =>
+          signOut({
+            fetchOptions: {
+              onSuccess: () => {
+                window.location.href = "/";
+              },
+            },
+          })
+        }
         className="text-xs text-foreground/30 hover:text-foreground/60 transition-colors font-mono cursor-pointer"
       >
         Sign out
