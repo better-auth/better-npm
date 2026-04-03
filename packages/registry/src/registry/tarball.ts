@@ -1,23 +1,90 @@
 import { Hono } from "hono";
-import type { Env } from "../types.js";
+import type { Context } from "hono";
+import type { RegistryContext } from "../types.js";
+import {
+  getBlocksForPackage,
+  insertCustomerUsage,
+} from "../db/queries.js";
+import {
+  isCustomerBlocked,
+  parseBlockRows,
+  parseTarballVersion,
+} from "./customer-policy.js";
 import { fetchUpstreamTarball } from "./upstream.js";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<RegistryContext>();
 
 app.get("/:scope/:name/-/:filename", handleTarball);
 app.get("/:name/-/:filename", handleTarball);
 
-async function handleTarball(c: any) {
+function resolveTarballTarget(c: Context<RegistryContext>): {
+  packageName: string;
+  unscopedName: string;
+  filename: string;
+} | null {
   const scope = c.req.param("scope");
   const name = c.req.param("name");
   const filename = c.req.param("filename");
-  const packageName = scope?.startsWith("@")
-    ? `${scope}/${name}`
-    : scope || name;
+  if (!name || !filename) {
+    return null;
+  }
+  if (scope?.startsWith("@")) {
+    return {
+      packageName: `${scope}/${name}`,
+      unscopedName: name,
+      filename,
+    };
+  }
+  return {
+    packageName: scope || name,
+    unscopedName: scope || name,
+    filename,
+  };
+}
+
+async function handleTarball(c: Context<RegistryContext>) {
+  const customer = c.get("customer");
+  if (!customer) {
+    return c.json({ error: "Authentication required." }, 401);
+  }
+
+  const resolved = resolveTarballTarget(c);
+  if (!resolved) {
+    return c.json({ error: "not found" }, 404);
+  }
+  const { packageName, unscopedName, filename } = resolved;
+  const parsedVersion = parseTarballVersion(filename, unscopedName);
+
+  c.executionCtx.waitUntil(
+    insertCustomerUsage(c.env.DB, {
+      id: crypto.randomUUID(),
+      customerId: customer.id,
+      packageName,
+      version: parsedVersion,
+      kind: "tarball",
+      createdAt: Date.now(),
+    }),
+  );
+
+  const blockRows = await getBlocksForPackage(
+    c.env.DB,
+    customer.id,
+    packageName,
+  );
+  const parsed = parseBlockRows(blockRows);
+  if (
+    isCustomerBlocked(parsed.blockAll, parsed.blockedVersions, parsedVersion)
+  ) {
+    return c.json(
+      {
+        error: `${packageName} tarball is blocked by your policy`,
+      },
+      403,
+    );
+  }
 
   const r2Key = `${packageName}/${filename}`;
 
-  // Check R2 cache first
   const cached = await c.env.TARBALLS.get(r2Key);
   if (cached) {
     return new Response(cached.body, {
@@ -28,7 +95,6 @@ async function handleTarball(c: any) {
     });
   }
 
-  // Fetch from upstream
   const upstreamUrl = `${c.env.UPSTREAM_REGISTRY}/${packageName}/-/${filename}`;
   const res = await fetchUpstreamTarball(c.env, upstreamUrl);
 
@@ -36,7 +102,6 @@ async function handleTarball(c: any) {
     return c.json({ error: "tarball not found" }, 404);
   }
 
-  // Tee the stream — one copy to R2 cache, one to the client
   const [cacheStream, clientStream] = res.body.tee();
 
   c.executionCtx.waitUntil(

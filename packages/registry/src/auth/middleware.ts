@@ -1,7 +1,10 @@
 import type { Context, Next } from "hono";
-import type { Env } from "../types.js";
+import type { Env, RegistryContext } from "../types.js";
 
-export async function requireAuth(c: Context<{ Bindings: Env }>, next: Next) {
+export async function requireAuth(
+  c: Context<RegistryContext>,
+  next: Next,
+) {
   const auth = c.req.header("Authorization");
   if (!auth?.startsWith("Bearer ")) {
     return c.json(
@@ -42,6 +45,8 @@ export async function requireAuth(c: Context<{ Bindings: Env }>, next: Next) {
       403,
     );
   }
+
+  c.set("customer", { id: row.id, email: row.email });
 
   // Update last_used_at (fire and forget)
   c.executionCtx.waitUntil(

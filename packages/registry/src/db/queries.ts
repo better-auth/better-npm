@@ -206,3 +206,227 @@ export async function getAllTrackedPackageNames(
     .all<{ name: string }>();
   return result.results.map((r) => r.name);
 }
+
+// ── Dashboard: blocks & usage ─────────────────────────────────────────────
+
+export interface CustomerBlockRow {
+  id: string;
+  customer_id: string;
+  package_name: string;
+  version: string;
+  created_at: number;
+}
+
+export async function getBlocksForPackage(
+  db: D1Database,
+  customerId: string,
+  packageName: string,
+): Promise<{ version: string }[]> {
+  const result = await db
+    .prepare(
+      "SELECT version FROM customer_block WHERE customer_id = ? AND package_name = ?",
+    )
+    .bind(customerId, packageName)
+    .all<{ version: string }>();
+  return result.results;
+}
+
+export async function insertCustomerUsage(
+  db: D1Database,
+  row: {
+    id: string;
+    customerId: string;
+    packageName: string;
+    version: string | null;
+    kind: "metadata" | "tarball";
+    createdAt: number;
+  },
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO customer_usage (id, customer_id, package_name, version, kind, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      row.id,
+      row.customerId,
+      row.packageName,
+      row.version,
+      row.kind,
+      row.createdAt,
+    )
+    .run();
+}
+
+export async function listCustomerBlocks(
+  db: D1Database,
+  customerId: string,
+): Promise<CustomerBlockRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT id, customer_id, package_name, version, created_at
+       FROM customer_block WHERE customer_id = ? ORDER BY created_at DESC`,
+    )
+    .bind(customerId)
+    .all<CustomerBlockRow>();
+  return result.results;
+}
+
+export async function insertCustomerBlock(
+  db: D1Database,
+  row: {
+    id: string;
+    customerId: string;
+    packageName: string;
+    version: string;
+    createdAt: number;
+  },
+): Promise<{ ok: true } | { ok: false; conflict: true }> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO customer_block (id, customer_id, package_name, version, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        row.id,
+        row.customerId,
+        row.packageName,
+        row.version,
+        row.createdAt,
+      )
+      .run();
+    return { ok: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("UNIQUE") || msg.includes("unique")) {
+      return { ok: false, conflict: true };
+    }
+    throw e;
+  }
+}
+
+export async function deleteCustomerBlock(
+  db: D1Database,
+  customerId: string,
+  packageName: string,
+  version: string,
+): Promise<{ deleted: number }> {
+  const result = await db
+    .prepare(
+      `DELETE FROM customer_block WHERE customer_id = ? AND package_name = ? AND version = ?`,
+    )
+    .bind(customerId, packageName, version)
+    .run();
+  return { deleted: result.meta.changes ?? 0 };
+}
+
+export interface CustomerUsageRow {
+  id: string;
+  package_name: string;
+  version: string | null;
+  kind: string;
+  created_at: number;
+}
+
+export async function listCustomerUsage(
+  db: D1Database,
+  customerId: string,
+  limit: number,
+  offset: number,
+): Promise<CustomerUsageRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT id, package_name, version, kind, created_at
+       FROM customer_usage WHERE customer_id = ?
+       ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    )
+    .bind(customerId, limit, offset)
+    .all<CustomerUsageRow>();
+  return result.results;
+}
+
+export async function getCustomerIdByEmail(
+  db: D1Database,
+  email: string,
+): Promise<string | null> {
+  const row = await db
+    .prepare("SELECT id FROM customer WHERE email = ?")
+    .bind(email)
+    .first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+export interface CuratedUsageAggRow {
+  package_name: string;
+  last_seen: number;
+  metadata_count: number;
+  tarball_count: number;
+  package_id: string | null;
+}
+
+export async function listCuratedUsageAggregates(
+  db: D1Database,
+  customerId: string,
+  limit: number,
+): Promise<CuratedUsageAggRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT
+         ua.package_name AS package_name,
+         ua.last_seen AS last_seen,
+         ua.metadata_count AS metadata_count,
+         ua.tarball_count AS tarball_count,
+         p.id AS package_id
+       FROM (
+         SELECT
+           package_name,
+           MAX(created_at) AS last_seen,
+           SUM(CASE WHEN kind = 'metadata' THEN 1 ELSE 0 END) AS metadata_count,
+           SUM(CASE WHEN kind = 'tarball' THEN 1 ELSE 0 END) AS tarball_count
+         FROM customer_usage
+         WHERE customer_id = ?
+         GROUP BY package_name
+       ) ua
+       LEFT JOIN package p ON p.name = ua.package_name
+       ORDER BY ua.last_seen DESC
+       LIMIT ?`,
+    )
+    .bind(customerId, limit)
+    .all<CuratedUsageAggRow>();
+  return result.results;
+}
+
+export interface LatestReviewForPackageRow {
+  package_id: string;
+  risk_score: number | null;
+  summary: string | null;
+  version: string;
+  version_status: string;
+  review_created_at: number;
+}
+
+export async function getLatestReviewsForPackages(
+  db: D1Database,
+  packageIds: string[],
+): Promise<LatestReviewForPackageRow[]> {
+  if (packageIds.length === 0) return [];
+  const placeholders = packageIds.map(() => "?").join(", ");
+  const result = await db
+    .prepare(
+      `SELECT
+         pv.package_id AS package_id,
+         r.risk_score AS risk_score,
+         r.summary AS summary,
+         pv.version AS version,
+         pv.status AS version_status,
+         r.created_at AS review_created_at
+       FROM review r
+       JOIN package_version pv ON pv.id = r.package_version_id
+       WHERE pv.package_id IN (${placeholders})
+       ORDER BY r.created_at DESC`,
+    )
+    .bind(...packageIds)
+    .all<LatestReviewForPackageRow>();
+  return result.results;
+}

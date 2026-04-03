@@ -9,7 +9,18 @@ export interface Env {
   STRIPE_PRICE_ID: string;
   RESEND_API_KEY?: string;
   WEB_APP_URL: string;
+  /** Server-to-server auth for dashboard internal APIs (Next.js BFF). */
+  REGISTRY_INTERNAL_SECRET?: string;
 }
+
+/** Main worker Hono context: `customer` set by `requireAuth`; dashboard internal routes use `dashCustomerId`. */
+export type RegistryContext = {
+  Bindings: Env;
+  Variables: {
+    customer?: { id: string; email: string };
+    dashCustomerId?: string;
+  };
+};
 
 export interface ReviewMessage {
   packageVersionId: string;

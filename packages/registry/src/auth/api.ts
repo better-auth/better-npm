@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import type { Env } from "../types.js";
+import type { RegistryContext } from "../types.js";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<RegistryContext>();
 
 // ── POST /api/internal/register-token — web app pushes token after auth ─
 

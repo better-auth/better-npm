@@ -1,18 +1,22 @@
 import { Hono } from "hono";
-import type { Env, ReviewMessage } from "./types.js";
+import type { Env, RegistryContext, ReviewMessage } from "./types.js";
 import { metadataRouter } from "./registry/metadata.js";
 import { tarballRouter } from "./registry/tarball.js";
 import { authRouter } from "./auth/api.js";
 import { requireAuth } from "./auth/middleware.js";
+import { dashboardInternalRouter } from "./dashboard/internal.js";
 import { handleReviewQueue } from "./review/consumer.js";
 import { syncFromChangesFeed } from "./watcher/changes.js";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<RegistryContext>();
 
 app.get("/-/ping", (c) => c.json({ ok: true, registry: "better-npm" }));
 
 // Auth API (CLI login, Stripe webhook) — no auth required on these
 app.route("/", authRouter);
+
+// Dashboard BFF (Next.js server only; Bearer REGISTRY_INTERNAL_SECRET)
+app.route("/api/internal/dashboard", dashboardInternalRouter);
 
 // Everything below requires a valid, paid token
 app.use("/:path{.+}", async (c, next) => {
