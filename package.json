@@ -11,7 +11,7 @@
     "dev": "pnpm --parallel --filter './apps/*' --filter './packages/*' dev",
     "dev:registry": "pnpm --filter @better-npm/registry dev",
     "dev:web": "pnpm --filter @better-npm/web dev",
-    "deploy:registry": "pnpm --filter @better-npm/registry deploy",
+    "deploy:registry": "pnpm --filter @better-npm/registry run deploy",
     "build": "pnpm --parallel --filter './apps/*' --filter './packages/*' build",
     "bump": "bumpp packages/cli/package.json package.json"
   },
