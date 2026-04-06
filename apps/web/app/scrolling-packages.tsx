@@ -22,13 +22,11 @@ const FLAGGED_PER_ROW: Set<number>[] = [
 function MarqueeRow({
   packages,
   duration,
-  reverse,
   side,
   flagged,
 }: {
   packages: string[];
   duration: number;
-  reverse?: boolean;
   side: "left" | "right";
   flagged?: Set<number>;
 }) {
@@ -37,7 +35,7 @@ function MarqueeRow({
   return (
     <div className="flex overflow-hidden">
       <div
-        className={reverse ? "animate-marquee-reverse" : "animate-marquee"}
+        className="animate-marquee-reverse"
         style={{ animationDuration: `${duration}s` }}
       >
         <div className="flex gap-2 sm:gap-3 pr-2 sm:pr-3">
@@ -76,7 +74,6 @@ export function ScrollingPackages() {
             key={i}
             packages={row}
             duration={45 + i * 10}
-            reverse={i % 2 === 1}
             side="left"
           />
         ))}
@@ -92,7 +89,6 @@ export function ScrollingPackages() {
             key={i}
             packages={row}
             duration={45 + i * 10}
-            reverse={i % 2 === 1}
             side="right"
             flagged={FLAGGED_PER_ROW[i]}
           />
