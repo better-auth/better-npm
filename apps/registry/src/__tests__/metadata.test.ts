@@ -168,65 +168,41 @@ describe("GET /:name (package metadata)", () => {
 		expect(body.versions["2.0.0"]).toBeUndefined();
 	});
 
-	it("blocks unknown/unreviewed versions for tracked packages", async () => {
-		const metadata = makeNpmMetadata("tracked-unknown", [
+	it("passes through unknown versions but blocks known non-approved", async () => {
+		const metadata = makeNpmMetadata("tracked-mixed", [
 			"1.0.0",
 			"1.1.0",
-			"2.0.0",
-		]);
-		mockUpstreamFetch(
-			new Map([
-				[upstreamUrl("tracked-unknown"), { status: 200, body: JSON.stringify(metadata) }],
-			]),
-		);
-
-		const pkgId = await createPackage(env.DB, {
-			name: "tracked-unknown",
-			weeklyDownloads: 500_000,
-		});
-		// Only 1.0.0 is approved — 1.1.0 and 2.0.0 are NOT in the DB at all
-		await createPackageVersion(env.DB, {
-			packageId: pkgId,
-			version: "1.0.0",
-			status: "approved",
-		});
-
-		const res = await workerFetch("/tracked-unknown");
-		expect(res.status).toBe(200);
-
-		const body = await res.json<any>();
-		expect(body.versions["1.0.0"]).toBeTruthy();
-		expect(body.versions["1.1.0"]).toBeUndefined();
-		expect(body.versions["2.0.0"]).toBeUndefined();
-	});
-
-	it("passes through unreviewed versions for low-download tracked packages", async () => {
-		const metadata = makeNpmMetadata("low-dl-pkg", [
-			"1.0.0",
 			"2.0.0",
 			"3.0.0",
 		]);
 		mockUpstreamFetch(
 			new Map([
-				[upstreamUrl("low-dl-pkg"), { status: 200, body: JSON.stringify(metadata) }],
+				[upstreamUrl("tracked-mixed"), { status: 200, body: JSON.stringify(metadata) }],
 			]),
 		);
 
 		const pkgId = await createPackage(env.DB, {
-			name: "low-dl-pkg",
-			weeklyDownloads: 10_000,
+			name: "tracked-mixed",
+			weeklyDownloads: 500_000,
 		});
 		await createPackageVersion(env.DB, {
 			packageId: pkgId,
 			version: "1.0.0",
 			status: "approved",
 		});
+		await createPackageVersion(env.DB, {
+			packageId: pkgId,
+			version: "1.1.0",
+			status: "rejected",
+		});
+		// 2.0.0 and 3.0.0 are NOT in the DB — unknown/unreviewed
 
-		const res = await workerFetch("/low-dl-pkg");
+		const res = await workerFetch("/tracked-mixed");
 		expect(res.status).toBe(200);
 
 		const body = await res.json<any>();
 		expect(body.versions["1.0.0"]).toBeTruthy();
+		expect(body.versions["1.1.0"]).toBeUndefined();
 		expect(body.versions["2.0.0"]).toBeTruthy();
 		expect(body.versions["3.0.0"]).toBeTruthy();
 	});
@@ -330,7 +306,7 @@ describe("GET /:scope/:name/:version (scoped version metadata)", () => {
 		expect(body.error).toContain("pending");
 	});
 
-	it("returns 403 for unreviewed versions on tracked packages", async () => {
+	it("passes through unreviewed versions and fast-tracks review", async () => {
 		const metadata = makeNpmMetadata("@test/unreviewed-ver", [
 			"1.0.0",
 			"2.0.0",
@@ -345,7 +321,6 @@ describe("GET /:scope/:name/:version (scoped version metadata)", () => {
 			name: "@test/unreviewed-ver",
 			weeklyDownloads: 500_000,
 		});
-		// Only 1.0.0 approved — 2.0.0 not in DB at all
 		await createPackageVersion(env.DB, {
 			packageId: pkgId,
 			version: "1.0.0",
@@ -353,10 +328,10 @@ describe("GET /:scope/:name/:version (scoped version metadata)", () => {
 		});
 
 		const res = await workerFetch("/@test/unreviewed-ver/2.0.0");
-		expect(res.status).toBe(403);
+		expect(res.status).toBe(200);
 
-		const body = await res.json<{ error: string }>();
-		expect(body.error).toContain("unreviewed");
+		const body = await res.json<any>();
+		expect(body.version).toBe("2.0.0");
 	});
 
 	it("returns 403 for user-blocked versions when authenticated", async () => {

@@ -155,28 +155,25 @@ async function handleMetadata(c: any) {
     return c.json(rewriteTarballUrls(upstream, registryUrl));
   }
 
-  const enforceAllowlist = (tracked.weekly_downloads ?? 0) >= MIN_WEEKLY_DOWNLOADS;
-
-  if (upstream.versions && enforceAllowlist) {
+  if (upstream.versions) {
     const knownVersions = await getAllKnownVersions(c.env.DB, tracked.id);
-    const approvedVersions = new Set(
-      knownVersions.filter((v) => v.status === "approved").map((v) => v.version),
+    const statusByVersion = new Map(
+      knownVersions.map((v) => [v.version, v.status]),
     );
-    const knownVersionSet = new Set(knownVersions.map((v) => v.version));
 
     const blocked = new Set<string>();
     const toReview: { version: string; tarballSha: string }[] = [];
 
     for (const ver of Object.keys(upstream.versions)) {
-      if (!approvedVersions.has(ver)) {
+      const status = statusByVersion.get(ver);
+      if (status && status !== "approved") {
         blocked.add(ver);
-        if (!knownVersionSet.has(ver)) {
-          toReview.push({
-            version: ver,
-            tarballSha: upstream.versions[ver].dist?.shasum || "",
-          });
-        }
         delete upstream.versions[ver];
+      } else if (!status) {
+        toReview.push({
+          version: ver,
+          tarballSha: upstream.versions[ver].dist?.shasum || "",
+        });
       }
     }
 
@@ -370,25 +367,25 @@ async function handleVersionMetadata(c: any) {
   }
 
   const tracked = await getPackageByName(c.env.DB, packageName);
-  if (tracked && (tracked.weekly_downloads ?? 0) >= MIN_WEEKLY_DOWNLOADS) {
+  if (tracked) {
     const ver = await getVersionByPackageAndVersion(
       c.env.DB,
       tracked.id,
       version,
     );
-    if (!ver || ver.status !== "approved") {
-      if (!ver) {
-        c.executionCtx.waitUntil(
-          fastTrackReview(c.env, tracked.id, packageName, [
-            { version, tarballSha: versionData.dist?.shasum || "" },
-          ]),
-        );
-      }
+    if (ver && ver.status !== "approved") {
       return c.json(
         {
-          error: `${packageName}@${version} is ${ver?.status ?? "unreviewed"} — not yet available`,
+          error: `${packageName}@${version} is ${ver.status} — not yet available`,
         },
         403,
+      );
+    }
+    if (!ver) {
+      c.executionCtx.waitUntil(
+        fastTrackReview(c.env, tracked.id, packageName, [
+          { version, tarballSha: versionData.dist?.shasum || "" },
+        ]),
       );
     }
   }

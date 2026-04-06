@@ -12,11 +12,13 @@ That's it. One line in `.npmrc` and every `npm install` routes through better-np
 
 ## What gets checked
 
-| Check | How |
-| --- | --- |
-| **Malicious code** | Static pattern detection + AI analysis of source diffs |
-| **Typosquatting** | Blocklist of known typosquats — blocks packages that impersonate popular ones |
-| **Supply chain attacks** | Dependency diffing, maintainer change detection, rapid-publish flagging |
+
+| Check                    | How                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| **Malicious code**       | Static pattern detection + AI analysis of source diffs                        |
+| **Typosquatting**        | Blocklist of known typosquats — blocks packages that impersonate popular ones |
+| **Supply chain attacks** | Dependency diffing, maintainer change detection, rapid-publish flagging       |
+
 
 Every new version published to npm is picked up, analyzed, and assigned a risk score. Low-risk versions are auto-approved; high-risk ones are held for further review.
 
@@ -33,11 +35,13 @@ Your npm client talks to `registry.better-npm.dev` instead of `registry.npmjs.or
 
 ## Project structure
 
-| Package | Description |
-| --- | --- |
+
+| Package         | Description                                             |
+| --------------- | ------------------------------------------------------- |
 | `apps/registry` | Cloudflare Worker — registry proxy and vetting pipeline |
-| `apps/web` | Next.js dashboard — auth, install activity, admin tools |
-| `packages/cli` | CLI to configure `.npmrc` and sign in |
+| `apps/web`      | Next.js dashboard — auth, install activity, admin tools |
+| `packages/cli`  | CLI to configure `.npmrc` and sign in                   |
+
 
 ### Tech stack
 
