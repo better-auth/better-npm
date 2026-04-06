@@ -1,0 +1,30 @@
+{
+  "name": "@better-npm/registry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "wrangler d1 execute better-npm --local --file=./migrations/0001_init.sql",
+    "db:migrate:remote": "wrangler d1 execute better-npm --remote --file=./migrations/0001_init.sql"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "latest",
+    "@types/semver": "^7.7.1",
+    "ai": "latest",
+    "hono": "latest",
+    "semver": "^7.7.4",
+    "tsx": "^4.21.0",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.14.1",
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest",
+    "vitest": "^4.1.2",
+    "wrangler": "latest"
+  }
+}

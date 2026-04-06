@@ -1,0 +1,24 @@
+{
+  "name": "better-npm",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/better-auth/better-npm.git"
+  },
+  "homepage": "https://better-npm.com",
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' --filter './packages/*' dev",
+    "dev:registry": "pnpm --filter @better-npm/registry dev",
+    "dev:web": "pnpm --filter @better-npm/web dev",
+    "deploy:registry": "pnpm --filter @better-npm/registry deploy",
+    "build": "pnpm --parallel --filter './apps/*' --filter './packages/*' build",
+    "bump": "bumpp packages/cli/package.json package.json"
+  },
+  "dependencies": {
+    "bumpp": "^11.0.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "workerd"]
+  }
+}

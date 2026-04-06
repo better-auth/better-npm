@@ -1,0 +1,35 @@
+{
+  "name": "@better-npm/cli",
+  "version": "0.1.7",
+  "description": "Every npm package release, vetted before it reaches you",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/better-auth/better-npm.git",
+    "directory": "packages/cli"
+  },
+  "type": "module",
+  "bin": {
+    "better-npm": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup src/index.ts --format esm"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "open": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsup": "latest",
+    "typescript": "latest"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "exports": {
+    ".": "./dist/index.js"
+  }
+}
