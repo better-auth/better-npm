@@ -328,6 +328,25 @@ describe("user block rules", () => {
 		expect(rule.version_pattern).toBe(">=3.0.0");
 	});
 
+	it("creates a customer row when none exists (OAuth-only, no CLI register-token)", async () => {
+		const email = `ubr-web-${crypto.randomUUID()}@test.com`;
+
+		const createRes = await internalPost("/api/internal/user/block-rules", {
+			email,
+			package_name: "user-blocked-pkg",
+			version_pattern: "*",
+		});
+		expect(createRes.status).toBe(200);
+
+		const listRes = await internalGet(
+			`/api/internal/user/block-rules?email=${encodeURIComponent(email)}`,
+		);
+		const listBody = await listRes.json<{ rules: { package_name: string }[] }>();
+		expect(
+			listBody.rules.some((r) => r.package_name === "user-blocked-pkg"),
+		).toBe(true);
+	});
+
 	it("rejects invalid user version patterns", async () => {
 		const email = `ubr-invalid-${crypto.randomUUID()}@test.com`;
 		await createCustomer(env.DB, {

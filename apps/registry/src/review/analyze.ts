@@ -402,6 +402,20 @@ Key signals to watch for:
     };
   } catch (err) {
     console.error("AI analysis failed:", err);
-    throw new Error(`AI analysis failed for ${metadata.name}@${version}: ${err}`);
+    // Degrade gracefully: empty responses, structured-output failures, and
+    // transient provider errors should not strand versions in pending forever.
+    const detail =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "unknown error";
+    return {
+      riskScore: 0.55,
+      findings: [
+        {
+          severity: "medium",
+          category: "ai-analysis",
+          message: `Automated model review did not return a valid result (${detail}). Static analysis above still applies; treat risk as uncertain.`,
+        },
+      ],
+      summary: `AI review unavailable for this version (${detail}). Decision relies on static signals and policy thresholds.`,
+    };
   }
 }

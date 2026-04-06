@@ -3,6 +3,7 @@ dist/
 *.db
 *.db-journal
 .env
+.env.local
 .dev.vars
 drizzle/
 .wrangler/

@@ -49,6 +49,32 @@ function normalizeBlockRuleInput(input: {
   } as const;
 }
 
+/** Web dashboard users may never hit CLI register-token; ensure a registry row exists. */
+async function ensureCustomerByEmail(
+  db: D1Database,
+  email: string,
+): Promise<{ id: string }> {
+  const now = Date.now();
+  const newId = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO customer (id, email, github_id, name, created_at, updated_at)
+       VALUES (?, ?, NULL, NULL, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET updated_at = excluded.updated_at`,
+    )
+    .bind(newId, email, now, now)
+    .run();
+
+  const row = await db
+    .prepare("SELECT id FROM customer WHERE email = ?")
+    .bind(email)
+    .first<{ id: string }>();
+  if (!row) {
+    throw new Error("ensureCustomerByEmail: customer missing after upsert");
+  }
+  return row;
+}
+
 app.get("/api/internal/admin/stats", async (c) => {
   const db = c.env.DB;
 
@@ -805,11 +831,7 @@ app.post("/api/internal/user/block-rules", async (c) => {
     return c.json({ error: normalized.error }, 400);
   }
 
-  const customer = await db
-    .prepare("SELECT id FROM customer WHERE email = ?")
-    .bind(email)
-    .first<{ id: string }>();
-  if (!customer) return c.json({ error: "customer not found" }, 404);
+  const customer = await ensureCustomerByEmail(db, email);
 
   const id = crypto.randomUUID();
   await db
@@ -835,11 +857,7 @@ app.delete("/api/internal/user/block-rules/:id", async (c) => {
   const email = c.req.query("email");
   if (!email) return c.json({ error: "email required" }, 400);
 
-  const customer = await db
-    .prepare("SELECT id FROM customer WHERE email = ?")
-    .bind(email)
-    .first<{ id: string }>();
-  if (!customer) return c.json({ error: "customer not found" }, 404);
+  const customer = await ensureCustomerByEmail(db, email);
 
   await db
     .prepare("DELETE FROM user_block_rule WHERE id = ? AND customer_id = ?")
@@ -876,11 +894,7 @@ app.put("/api/internal/user/settings", async (c) => {
   }>();
   if (!email) return c.json({ error: "email required" }, 400);
 
-  const customer = await db
-    .prepare("SELECT id FROM customer WHERE email = ?")
-    .bind(email)
-    .first<{ id: string }>();
-  if (!customer) return c.json({ error: "customer not found" }, 404);
+  const customer = await ensureCustomerByEmail(db, email);
 
   await db
     .prepare(
