@@ -125,6 +125,17 @@ describe("admin block rules", () => {
 		expect(res.status).toBe(400);
 	});
 
+	it("rejects invalid admin version patterns", async () => {
+		const res = await internalPost("/api/internal/admin/block-rules", {
+			package_name: "bad-admin-pattern",
+			version_pattern: "definitely not semver",
+		});
+		expect(res.status).toBe(400);
+
+		const body = await res.json<{ error: string }>();
+		expect(body.error).toBe("invalid version_pattern");
+	});
+
 	it("filters block rules by search", async () => {
 		await internalPost("/api/internal/admin/block-rules", {
 			package_name: "search-target-xyz",
@@ -317,6 +328,43 @@ describe("user block rules", () => {
 		expect(rule.version_pattern).toBe(">=3.0.0");
 	});
 
+	it("rejects invalid user version patterns", async () => {
+		const email = `ubr-invalid-${crypto.randomUUID()}@test.com`;
+		await createCustomer(env.DB, {
+			email,
+			githubId: `gh-ubr-invalid-${crypto.randomUUID()}`,
+		});
+
+		const res = await internalPost("/api/internal/user/block-rules", {
+			email,
+			package_name: "user-invalid-pkg",
+			version_pattern: "bad range",
+		});
+		expect(res.status).toBe(400);
+
+		const body = await res.json<{ error: string }>();
+		expect(body.error).toBe("invalid version_pattern");
+	});
+
+	it("rejects overly long report reasons", async () => {
+		const email = `ubr-long-${crypto.randomUUID()}@test.com`;
+		await createCustomer(env.DB, {
+			email,
+			githubId: `gh-ubr-long-${crypto.randomUUID()}`,
+		});
+
+		const res = await internalPost("/api/internal/user/block-rules", {
+			email,
+			package_name: "user-long-reason-pkg",
+			version_pattern: "*",
+			reason: "x".repeat(501),
+		});
+		expect(res.status).toBe(400);
+
+		const body = await res.json<{ error: string }>();
+		expect(body.error).toBe("reason too long");
+	});
+
 	it("deletes user block rules", async () => {
 		const email = `ubr-del-${crypto.randomUUID()}@test.com`;
 		await createCustomer(env.DB, {
@@ -335,6 +383,72 @@ describe("user block rules", () => {
 			`/api/internal/user/block-rules/${id}?email=${encodeURIComponent(email)}`,
 		);
 		expect(deleteRes.status).toBe(200);
+	});
+});
+
+describe("admin user reports", () => {
+	it("groups reports by package and version pattern", async () => {
+		const email = `reports-${crypto.randomUUID()}@test.com`;
+		const customerId = await createCustomer(env.DB, {
+			email,
+			githubId: `gh-reports-${crypto.randomUUID()}`,
+		});
+
+		await env.DB.prepare(
+			"INSERT INTO user_block_rule (id, customer_id, package_name, version_pattern, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		)
+			.bind(
+				crypto.randomUUID(),
+				customerId,
+				"reported-pkg",
+				">=1.0.0 <2.0.0",
+				"bad release line",
+				Date.now(),
+			)
+			.run();
+		await env.DB.prepare(
+			"INSERT INTO user_block_rule (id, customer_id, package_name, version_pattern, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		)
+			.bind(
+				crypto.randomUUID(),
+				customerId,
+				"reported-pkg",
+				"^3.0.0",
+				"bad major line",
+				Date.now() + 1,
+			)
+			.run();
+		await env.DB.prepare(
+			"INSERT INTO block_rule (id, package_name, version_pattern, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+		)
+			.bind(
+				crypto.randomUUID(),
+				"reported-pkg",
+				">=1.0.0 <2.0.0",
+				"covered by admin rule",
+				Date.now(),
+			)
+			.run();
+
+		const res = await internalGet("/api/internal/admin/user-reports");
+		expect(res.status).toBe(200);
+
+		const body = await res.json<{ reports: any[] }>();
+		const covered = body.reports.find(
+			(report) =>
+				report.package_name === "reported-pkg" &&
+				report.version_pattern === ">=1.0.0 <2.0.0",
+		);
+		const uncovered = body.reports.find(
+			(report) =>
+				report.package_name === "reported-pkg" &&
+				report.version_pattern === "^3.0.0",
+		);
+
+		expect(covered).toBeTruthy();
+		expect(covered.is_globally_blocked).toBe(true);
+		expect(uncovered).toBeTruthy();
+		expect(uncovered.is_globally_blocked).toBe(false);
 	});
 });
 

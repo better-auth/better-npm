@@ -12,10 +12,27 @@ interface BlockRule {
   created_at: number;
 }
 
+interface Reporter {
+  email: string;
+  reason: string;
+  created_at: number;
+}
+
+interface UserReport {
+  package_name: string;
+  version_pattern: string;
+  report_count: number;
+  reporters: Reporter[];
+  latest_report: number;
+  is_globally_blocked: boolean;
+}
+
 export function BlockRulesClient({
   initialRules,
+  userReports = [],
 }: {
   initialRules: BlockRule[];
+  userReports?: UserReport[];
 }) {
   const router = useRouter();
   const [packageName, setPackageName] = useState("");
@@ -23,6 +40,12 @@ export function BlockRulesClient({
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [promoting, setPromoting] = useState<string | null>(null);
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+
+  function getReportKey(report: UserReport) {
+    return `${report.package_name}:${report.version_pattern}`;
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -57,9 +80,136 @@ export function BlockRulesClient({
     }
   }
 
+  async function handlePromoteToGlobal(report: UserReport) {
+    const reportKey = getReportKey(report);
+    setPromoting(reportKey);
+    const reasons = report.reporters.map((r) => r.reason).filter(Boolean);
+    const combinedReason = `User report for ${report.version_pattern}${report.report_count > 1 ? ` (${report.report_count} users)` : ""}: ${reasons[0]}${reasons.length > 1 ? ` (+${reasons.length - 1} more)` : ""}`;
+    try {
+      await fetch("/api/admin/block-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          package_name: report.package_name,
+          version_pattern: "*",
+          reason: combinedReason,
+        }),
+      });
+      router.refresh();
+    } finally {
+      setPromoting(null);
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <form onSubmit={handleAdd} className="rounded border border-foreground/[0.08] p-5">
+    <div className="space-y-8">
+      {/* User reports section */}
+      {userReports.length > 0 && (
+        <div className="rounded border border-amber-500/15 overflow-hidden">
+          <div className="border-b border-amber-500/10 bg-amber-500/[0.04] px-5 py-3 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-amber-400/90">
+                User reports
+              </h3>
+              <p className="text-[11px] text-amber-400/50 mt-0.5">
+                Packages blocked by users with a reason — review and promote to
+                global blocks
+              </p>
+            </div>
+            <span className="text-xs font-mono bg-amber-500/10 text-amber-400/80 border border-amber-500/15 rounded-full px-2 py-0.5">
+              {userReports.length}
+            </span>
+          </div>
+          <div className="divide-y divide-foreground/[0.04]">
+            {userReports.map((report) => (
+              <div key={getReportKey(report)}>
+                <div
+                  className="flex items-center gap-4 px-5 py-3 hover:bg-foreground/[0.02] transition-colors cursor-pointer"
+                  onClick={() =>
+                    setExpandedReport(
+                      expandedReport === getReportKey(report)
+                        ? null
+                        : getReportKey(report),
+                    )
+                  }
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[13px]">
+                        {report.package_name}
+                      </span>
+                      <span className="text-[10px] font-mono bg-foreground/[0.04] text-foreground/55 border border-foreground/[0.08] rounded px-1.5 py-0.5">
+                        {report.version_pattern}
+                      </span>
+                      {report.report_count > 1 && (
+                        <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400/70 border border-amber-500/15 rounded px-1.5 py-0.5">
+                          {report.report_count} report
+                          {report.report_count > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-foreground/40 mt-0.5 truncate">
+                      {report.reporters[0]?.reason}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePromoteToGlobal(report);
+                      }}
+                      disabled={promoting === getReportKey(report)}
+                      className="px-3 py-1.5 text-[11px] rounded border border-red-500/20 text-red-400/80 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {promoting === getReportKey(report)
+                        ? "Blocking…"
+                        : "Block globally"}
+                    </button>
+                    <span className="text-foreground/20 text-xs">
+                      {expandedReport === getReportKey(report) ? "▾" : "▸"}
+                    </span>
+                  </div>
+                </div>
+
+                {expandedReport === getReportKey(report) && (
+                  <div className="border-t border-foreground/[0.04] bg-foreground/[0.015] px-5 py-3">
+                    <div className="space-y-2">
+                      {report.reporters.map((r, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 text-[12px]"
+                        >
+                          <span className="text-foreground/30 font-mono shrink-0">
+                            {r.email}
+                          </span>
+                          <span className="text-foreground/50">
+                            &ldquo;{r.reason}&rdquo;
+                          </span>
+                          <span className="text-foreground/20 shrink-0 ml-auto">
+                            {formatTs(r.created_at)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {report.report_count > report.reporters.length && (
+                      <p className="text-[11px] text-foreground/30">
+                        Showing the latest {report.reporters.length} of{" "}
+                        {report.report_count} reports.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add block rule form */}
+      <form
+        onSubmit={handleAdd}
+        className="rounded border border-foreground/[0.08] p-5"
+      >
         <h3 className="text-sm font-medium mb-4">Add block rule</h3>
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
@@ -98,10 +248,13 @@ export function BlockRulesClient({
           </div>
         </div>
         <p className="text-[11px] text-foreground/25 mt-2">
-          Supports semver ranges: <code className="text-foreground/35">*</code> (all versions),{" "}
+          Supports semver ranges:{" "}
+          <code className="text-foreground/35">*</code> (all versions),{" "}
           <code className="text-foreground/35">1.2.3</code> (exact),{" "}
-          <code className="text-foreground/35">{">"}=1.0.0 {"<"}2.0.0</code> (range),{" "}
-          <code className="text-foreground/35">^1.0.0</code>,{" "}
+          <code className="text-foreground/35">
+            {">"}=1.0.0 {"<"}2.0.0
+          </code>{" "}
+          (range), <code className="text-foreground/35">^1.0.0</code>,{" "}
           <code className="text-foreground/35">~1.0.0</code>
         </p>
         <button
@@ -113,6 +266,7 @@ export function BlockRulesClient({
         </button>
       </form>
 
+      {/* Global block rules table */}
       <div className="border border-foreground/[0.08] rounded overflow-auto">
         <table className="w-full text-sm min-w-[550px]">
           <thead>

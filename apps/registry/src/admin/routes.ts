@@ -1,7 +1,53 @@
 import { Hono } from "hono";
+import semver from "semver";
 import type { Env } from "../types.js";
 
 const app = new Hono<{ Bindings: Env }>();
+
+const MAX_PACKAGE_NAME_LENGTH = 214;
+const MAX_VERSION_PATTERN_LENGTH = 128;
+const MAX_REASON_LENGTH = 500;
+const MAX_USER_REPORTS = 250;
+const MAX_REPORTERS_PER_GROUP = 20;
+
+function normalizeBlockRuleInput(input: {
+  package_name?: string;
+  version_pattern?: string;
+  reason?: string;
+}) {
+  const packageName = input.package_name?.trim() || "";
+  const versionPattern = input.version_pattern?.trim() || "";
+  const reason = input.reason?.trim() || null;
+
+  if (!packageName || !versionPattern) {
+    return { error: "package_name and version_pattern required" } as const;
+  }
+
+  if (packageName.length > MAX_PACKAGE_NAME_LENGTH) {
+    return { error: "package_name too long" } as const;
+  }
+
+  if (versionPattern.length > MAX_VERSION_PATTERN_LENGTH) {
+    return { error: "version_pattern too long" } as const;
+  }
+
+  if (
+    versionPattern !== "*" &&
+    semver.validRange(versionPattern, { includePrerelease: true }) === null
+  ) {
+    return { error: "invalid version_pattern" } as const;
+  }
+
+  if (reason && reason.length > MAX_REASON_LENGTH) {
+    return { error: "reason too long" } as const;
+  }
+
+  return {
+    packageName,
+    versionPattern,
+    reason,
+  } as const;
+}
 
 app.get("/api/internal/admin/stats", async (c) => {
   const db = c.env.DB;
@@ -560,6 +606,102 @@ app.get("/api/internal/admin/customers", async (c) => {
   });
 });
 
+app.get("/api/internal/admin/user-reports", async (c) => {
+  const db = c.env.DB;
+
+  const reports = await db
+    .prepare(`
+      SELECT
+        ubr.package_name,
+        ubr.version_pattern,
+        ubr.reason,
+        ubr.created_at,
+        c.email
+      FROM user_block_rule ubr
+      JOIN customer c ON ubr.customer_id = c.id
+      WHERE ubr.reason IS NOT NULL AND ubr.reason != ''
+      ORDER BY ubr.created_at DESC
+      LIMIT ${MAX_USER_REPORTS}
+    `)
+    .all<{
+      package_name: string;
+      version_pattern: string;
+      reason: string;
+      created_at: number;
+      email: string;
+    }>();
+
+  const grouped = new Map<string, {
+    package_name: string;
+    version_pattern: string;
+    report_count: number;
+    reporters: { email: string; reason: string; created_at: number }[];
+    latest_report: number;
+    is_globally_blocked: boolean;
+  }>();
+
+  for (const r of reports.results) {
+    const key = `${r.package_name}\u0000${r.version_pattern}`;
+    const existing = grouped.get(key);
+    const reporter = {
+      email: r.email,
+      reason: r.reason,
+      created_at: r.created_at,
+    };
+    if (existing) {
+      existing.report_count++;
+      if (existing.reporters.length < MAX_REPORTERS_PER_GROUP) {
+        existing.reporters.push(reporter);
+      }
+      if (r.created_at > existing.latest_report) {
+        existing.latest_report = r.created_at;
+      }
+    } else {
+      grouped.set(key, {
+        package_name: r.package_name,
+        version_pattern: r.version_pattern,
+        report_count: 1,
+        reporters: [reporter],
+        latest_report: r.created_at,
+        is_globally_blocked: false,
+      });
+    }
+  }
+
+  if (grouped.size > 0) {
+    const names = [...new Set([...grouped.values()].map((report) => report.package_name))];
+    const placeholders = names.map(() => "?").join(",");
+    const blocked = await db
+      .prepare(`
+        SELECT package_name, version_pattern
+        FROM block_rule
+        WHERE package_name IN (${placeholders})
+      `)
+      .bind(...names)
+      .all<{ package_name: string; version_pattern: string }>();
+
+    const blockedByPackage = new Map<string, Set<string>>();
+    for (const b of blocked.results) {
+      const patterns = blockedByPackage.get(b.package_name) || new Set<string>();
+      patterns.add(b.version_pattern);
+      blockedByPackage.set(b.package_name, patterns);
+    }
+
+    for (const entry of grouped.values()) {
+      const patterns = blockedByPackage.get(entry.package_name);
+      if (!patterns) continue;
+      entry.is_globally_blocked =
+        patterns.has("*") || patterns.has(entry.version_pattern);
+    }
+  }
+
+  const sorted = [...grouped.values()].sort(
+    (a, b) => b.report_count - a.report_count || b.latest_report - a.latest_report,
+  );
+
+  return c.json({ reports: sorted });
+});
+
 app.get("/api/internal/admin/block-rules", async (c) => {
   const db = c.env.DB;
   const search = c.req.query("search") || "";
@@ -588,8 +730,13 @@ app.post("/api/internal/admin/block-rules", async (c) => {
       created_by?: string;
     }>();
 
-  if (!package_name || !version_pattern) {
-    return c.json({ error: "package_name and version_pattern required" }, 400);
+  const normalized = normalizeBlockRuleInput({
+    package_name,
+    version_pattern,
+    reason,
+  });
+  if ("error" in normalized) {
+    return c.json({ error: normalized.error }, 400);
   }
 
   const id = crypto.randomUUID();
@@ -597,7 +744,14 @@ app.post("/api/internal/admin/block-rules", async (c) => {
     .prepare(
       "INSERT INTO block_rule (id, package_name, version_pattern, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(id, package_name, version_pattern, reason || null, created_by || null, Date.now())
+    .bind(
+      id,
+      normalized.packageName,
+      normalized.versionPattern,
+      normalized.reason,
+      created_by || null,
+      Date.now(),
+    )
     .run();
 
   return c.json({ ok: true, id });
@@ -642,6 +796,15 @@ app.post("/api/internal/user/block-rules", async (c) => {
     return c.json({ error: "email, package_name and version_pattern required" }, 400);
   }
 
+  const normalized = normalizeBlockRuleInput({
+    package_name,
+    version_pattern,
+    reason,
+  });
+  if ("error" in normalized) {
+    return c.json({ error: normalized.error }, 400);
+  }
+
   const customer = await db
     .prepare("SELECT id FROM customer WHERE email = ?")
     .bind(email)
@@ -653,7 +816,14 @@ app.post("/api/internal/user/block-rules", async (c) => {
     .prepare(
       "INSERT INTO user_block_rule (id, customer_id, package_name, version_pattern, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(id, customer.id, package_name, version_pattern, reason || null, Date.now())
+    .bind(
+      id,
+      customer.id,
+      normalized.packageName,
+      normalized.versionPattern,
+      normalized.reason,
+      Date.now(),
+    )
     .run();
 
   return c.json({ ok: true, id });

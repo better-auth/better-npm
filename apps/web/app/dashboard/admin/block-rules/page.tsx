@@ -10,10 +10,39 @@ interface BlockRule {
   created_at: number;
 }
 
-export default async function BlockRulesPage() {
-  const data = (await registryFetch("/api/internal/admin/block-rules")) as {
-    rules: BlockRule[];
-  };
+interface Reporter {
+  email: string;
+  reason: string;
+  created_at: number;
+}
 
-  return <BlockRulesClient initialRules={data.rules} />;
+interface UserReport {
+  package_name: string;
+  version_pattern: string;
+  report_count: number;
+  reporters: Reporter[];
+  latest_report: number;
+  is_globally_blocked: boolean;
+}
+
+export default async function BlockRulesPage() {
+  const [rulesData, reportsData] = await Promise.all([
+    registryFetch("/api/internal/admin/block-rules") as Promise<{
+      rules: BlockRule[];
+    }>,
+    registryFetch("/api/internal/admin/user-reports").catch(() => ({
+      reports: [],
+    })) as Promise<{ reports: UserReport[] }>,
+  ]);
+
+  const pendingReports = reportsData.reports.filter(
+    (r) => !r.is_globally_blocked,
+  );
+
+  return (
+    <BlockRulesClient
+      initialRules={rulesData.rules}
+      userReports={pendingReports}
+    />
+  );
 }
