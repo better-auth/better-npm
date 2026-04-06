@@ -1,15 +1,11 @@
 "use client";
 
-const COLORS = [
-  "text-sky-400/30 border-sky-400/10 light:text-sky-600/30 light:border-sky-500/10",
-  "text-violet-400/30 border-violet-400/10 light:text-violet-600/30 light:border-violet-500/10",
-  "text-emerald-400/30 border-emerald-400/10 light:text-emerald-600/30 light:border-emerald-500/10",
-  "text-amber-400/30 border-amber-400/10 light:text-amber-600/30 light:border-amber-500/10",
-  "text-rose-400/30 border-rose-400/10 light:text-rose-600/30 light:border-rose-500/10",
-  "text-teal-400/30 border-teal-400/10 light:text-teal-600/30 light:border-teal-500/10",
-  "text-indigo-400/30 border-indigo-400/10 light:text-indigo-600/30 light:border-indigo-500/10",
-  "text-orange-400/30 border-orange-400/10 light:text-orange-600/30 light:border-orange-500/10",
-] as const;
+const NEUTRAL =
+  "text-foreground/20 border-foreground/[0.06] light:text-foreground/30 light:border-foreground/10";
+const SAFE =
+  "text-emerald-400/35 border-emerald-400/12 light:text-emerald-600/35 light:border-emerald-500/12";
+const FLAGGED =
+  "text-red-400/35 border-red-400/12 light:text-red-600/35 light:border-red-500/12";
 
 const ROWS = [
   ["react", "express", "lodash", "axios", "next", "typescript", "webpack", "vue", "zod", "prisma", "eslint", "prettier", "vite", "tailwindcss", "jest"],
@@ -17,16 +13,24 @@ const ROWS = [
   ["electron", "stripe", "firebase", "pg", "winston", "debug", "glob", "cheerio", "bcrypt", "nodemailer", "multer", "helmet", "morgan", "dotenv", "pino"],
 ];
 
+const FLAGGED_PER_ROW: Set<number>[] = [
+  new Set([3, 11]),
+  new Set([5, 9]),
+  new Set([1, 7, 13]),
+];
+
 function MarqueeRow({
   packages,
   duration,
   reverse,
-  colorOffset,
+  side,
+  flagged,
 }: {
   packages: string[];
   duration: number;
   reverse?: boolean;
-  colorOffset: number;
+  side: "left" | "right";
+  flagged?: Set<number>;
 }) {
   const doubled = [...packages, ...packages];
 
@@ -37,14 +41,22 @@ function MarqueeRow({
         style={{ animationDuration: `${duration}s` }}
       >
         <div className="flex gap-3 pr-3">
-          {doubled.map((pkg, i) => (
-            <span
-              key={`${pkg}-${i}`}
-              className={`shrink-0 font-mono text-[11.5px] px-2.5 py-1.5 rounded border whitespace-nowrap ${COLORS[(i + colorOffset) % COLORS.length]}`}
-            >
-              {pkg}
-            </span>
-          ))}
+          {doubled.map((pkg, i) => {
+            let color: string;
+            if (side === "left") {
+              color = NEUTRAL;
+            } else {
+              color = flagged?.has(i % packages.length) ? FLAGGED : SAFE;
+            }
+            return (
+              <span
+                key={`${pkg}-${i}`}
+                className={`shrink-0 font-mono text-[11.5px] px-2.5 py-1.5 rounded border whitespace-nowrap ${color}`}
+              >
+                {pkg}
+              </span>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -53,17 +65,41 @@ function MarqueeRow({
 
 export function ScrollingPackages() {
   return (
-    <div className="absolute inset-0 flex flex-col justify-center gap-2.5 pointer-events-none select-none overflow-hidden">
-      {ROWS.map((row, i) => (
-        <MarqueeRow
-          key={i}
-          packages={row}
-          duration={45 + i * 10}
-          reverse={i % 2 === 1}
-          colorOffset={i * 3}
-        />
-      ))}
+    <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
+      {/* Left half – neutral/grey pills */}
+      <div
+        className="absolute inset-0 flex flex-col justify-center gap-2.5"
+        style={{ clipPath: "inset(0 50% 0 0)" }}
+      >
+        {ROWS.map((row, i) => (
+          <MarqueeRow
+            key={i}
+            packages={row}
+            duration={45 + i * 10}
+            reverse={i % 2 === 1}
+            side="left"
+          />
+        ))}
+      </div>
 
+      {/* Right half – green (safe) & red (flagged) pills */}
+      <div
+        className="absolute inset-0 flex flex-col justify-center gap-2.5"
+        style={{ clipPath: "inset(0 0 0 50%)" }}
+      >
+        {ROWS.map((row, i) => (
+          <MarqueeRow
+            key={i}
+            packages={row}
+            duration={45 + i * 10}
+            reverse={i % 2 === 1}
+            side="right"
+            flagged={FLAGGED_PER_ROW[i]}
+          />
+        ))}
+      </div>
+
+      {/* Center fade – keeps hero content readable */}
       <div
         className="absolute inset-0"
         style={{

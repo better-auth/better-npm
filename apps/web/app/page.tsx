@@ -6,7 +6,7 @@ import { ScrollingPackages } from "./scrolling-packages";
 
 export default async function Home() {
   const stats = await registryFetch("/api/internal/admin/stats").catch(
-    () => ({ totalInstalls: 0, packages: 0 }),
+    () => ({ totalInstalls: 0, packages: 0, approvedVersions: 0 }),
   ) as Record<string, number>;
 
   return (
@@ -103,7 +103,7 @@ export default async function Home() {
             </div>
 
 
-            {(stats.totalInstalls > 0 || stats.packages > 0) && (
+            {(stats.totalInstalls > 0 || stats.approvedVersions > 0) && (
               <div className="mt-6 flex items-center justify-center gap-8">
                 <div className="text-center">
                   <p className="text-xl font-medium tabular-nums">
@@ -116,10 +116,10 @@ export default async function Home() {
                 <div className="w-px h-8 bg-foreground/[0.08]" />
                 <div className="text-center">
                   <p className="text-xl font-medium tabular-nums">
-                    {stats.packages.toLocaleString()}
+                    {stats.approvedVersions.toLocaleString()}
                   </p>
                   <p className="text-[11px] font-mono uppercase tracking-wider text-foreground/30 mt-1">
-                    packages vetted
+                    releases vetted
                   </p>
                 </div>
               </div>
