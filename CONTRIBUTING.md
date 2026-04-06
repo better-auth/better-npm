@@ -25,7 +25,7 @@ See [README.md](README.md) for full environment variable setup.
 
 ```
 apps/
-  registry/    Cloudflare Worker — registry proxy + vetting pipeline
+  registry/    Cloudflare Worker — registry proxy + scanning pipeline
   web/         Next.js — dashboard and auth
 packages/
   cli/         @better-npm/cli — .npmrc configuration tool

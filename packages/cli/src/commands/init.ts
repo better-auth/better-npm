@@ -52,7 +52,7 @@ export async function init() {
   });
 
   if (p.isCancel(wantsLogin) || !wantsLogin) {
-    p.outro("Packages are vetted before they end up on your computer. Go build something.");
+    p.outro("Packages are screened before they end up on your computer. Go build something.");
     return;
   }
 

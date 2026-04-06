@@ -162,6 +162,26 @@ body {
   animation: marquee-reverse linear infinite;
 }
 
+.landing-center-fade {
+  background: radial-gradient(
+    ellipse 70% 100% at 50% 50%,
+    var(--color-background) 0%,
+    var(--color-background) 55%,
+    transparent 100%
+  );
+}
+
+@media (min-width: 640px) {
+  .landing-center-fade {
+    background: radial-gradient(
+      ellipse 46% 100% at 50% 50%,
+      var(--color-background) 0%,
+      var(--color-background) 58%,
+      transparent 100%
+    );
+  }
+}
+
 .thin-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;

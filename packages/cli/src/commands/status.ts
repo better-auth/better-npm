@@ -50,5 +50,5 @@ export async function status() {
     );
   }
 
-  p.outro("Packages are vetted before they end up in your node_modules.");
+  p.outro("Packages are screened before they end up in your node_modules.");
 }

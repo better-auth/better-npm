@@ -8,7 +8,7 @@ Every npm package release, vetted before it reaches your `node_modules`.
 npx @better-npm/cli
 ```
 
-That's it. One line in `.npmrc` and every `npm install` routes through better-npm. Safe packages are served instantly; flagged ones are held until vetted.
+That's it. One line in `.npmrc` and every `npm install` routes through better-npm. Safe packages are served instantly; flagged ones are held for review.
 
 ## What gets checked
 
@@ -27,18 +27,18 @@ Every new version published to npm is picked up, analyzed, and assigned a risk s
 ```
 npm install ──▶ better-npm registry ──▶ npmjs.org
                        │
-                 vetting pipeline
+                scanning pipeline
               (static + AI analysis)
 ```
 
-Your npm client talks to `registry.better-npm.dev` instead of `registry.npmjs.org`. The registry proxies to upstream npm, but every new version goes through a vetting pipeline before it can be installed.
+Your npm client talks to `registry.better-npm.dev` instead of `registry.npmjs.org`. The registry proxies to upstream npm, but every new version goes through a scanning pipeline before it can be installed.
 
 ## Project structure
 
 
 | Package         | Description                                             |
 | --------------- | ------------------------------------------------------- |
-| `apps/registry` | Cloudflare Worker — registry proxy and vetting pipeline |
+| `apps/registry` | Cloudflare Worker — registry proxy and scanning pipeline |
 | `apps/web`      | Next.js dashboard — auth, install activity, admin tools |
 | `packages/cli`  | CLI to configure `.npmrc` and sign in                   |
 
