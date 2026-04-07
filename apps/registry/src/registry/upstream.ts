@@ -1,10 +1,27 @@
 import type { Env } from "../types.js";
 
+export function upstreamPackageUrl(env: Env, packageName: string): string {
+  return `${env.UPSTREAM_REGISTRY}/${encodeURIComponent(packageName).replace("%40", "@")}`;
+}
+
 export async function fetchUpstreamMetadata(
   env: Env,
   packageName: string,
 ): Promise<any | null> {
-  const url = `${env.UPSTREAM_REGISTRY}/${encodeURIComponent(packageName).replace("%40", "@")}`;
+  const url = upstreamPackageUrl(env, packageName);
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchUpstreamVersionMetadata(
+  env: Env,
+  packageName: string,
+  version: string,
+): Promise<any | null> {
+  const url = `${upstreamPackageUrl(env, packageName)}/${version}`;
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
   });

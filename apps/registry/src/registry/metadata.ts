@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import semver from "semver";
-import type { Env, ReviewMessage } from "../types.js";
+import type { Env, PackageVersionRow, ReviewMessage } from "../types.js";
 import {
 	getPackageByName,
 	getAllKnownVersions,
@@ -8,7 +8,12 @@ import {
 	upsertPackage,
 	insertVersion,
 } from "../db/queries.js";
-import { fetchUpstreamMetadata, rewriteTarballUrls } from "./upstream.js";
+import {
+	fetchUpstreamMetadata,
+	fetchUpstreamVersionMetadata,
+	upstreamPackageUrl,
+	rewriteTarballUrls,
+} from "./upstream.js";
 import { isTyposquat, getTyposquatOrigin } from "./blocklist.js";
 import { processReviewInline } from "../review/consumer.js";
 
@@ -96,8 +101,9 @@ function applyBlockRules(upstream: any, rules: BlockRule[]): void {
 
 const MIN_WEEKLY_DOWNLOADS = 50_000;
 
-/** Packument JSON is user-specific (block rules, min downloads); avoid client/proxy HTTP caches. */
-function setNoStoreRegistryJsonHeaders(c: { header: (k: string, v: string) => void }) {
+function setNoStoreRegistryJsonHeaders(c: {
+	header: (k: string, v: string) => void;
+}) {
 	c.header("Cache-Control", "private, no-store, must-revalidate");
 	c.header("Pragma", "no-cache");
 	c.header("Vary", "Authorization");
@@ -121,59 +127,78 @@ async function handleMetadata(c: any) {
 	if (isTyposquat(packageName)) {
 		const original = getTyposquatOrigin(packageName);
 		return c.json(
-			{ error: `${packageName} is blocked — known typosquat of "${original}"` },
+			{
+				error: `${packageName} is blocked — known typosquat of "${original}"`,
+			},
 			403,
 		);
 	}
 
-	const [upstream, blockRules] = await Promise.all([
-		fetchUpstreamMetadata(c.env, packageName),
+	// ── DB checks first — no upstream fetch ──────────────────────────────
+	const [blockRules, tracked] = await Promise.all([
 		getBlockRules(c.env.DB, packageName),
+		getPackageByName(c.env.DB, packageName),
 	]);
+
+	let knownVersions: PackageVersionRow[] = [];
+	let hasRejected = false;
+	if (tracked) {
+		knownVersions = await getAllKnownVersions(c.env.DB, tracked.id);
+		hasRejected = knownVersions.some((v) => v.status === "rejected");
+	}
+
+	let userRules: BlockRule[] = [];
+	let minDownloads: number | null = null;
+	if (customerId) {
+		[userRules, minDownloads] = await Promise.all([
+			getUserBlockRules(c.env.DB, customerId, packageName),
+			getUserMinDownloads(c.env.DB, customerId),
+		]);
+	}
+
+	// minDownloads is a package-level gate — doesn't need the full packument
+	if (minDownloads != null) {
+		const downloads =
+			tracked?.weekly_downloads ?? (await fetchWeeklyDownloads(packageName));
+		if (downloads < minDownloads) {
+			return c.json(
+				{
+					error: `${packageName} is blocked — below your minimum weekly downloads threshold (${downloads.toLocaleString()} < ${minDownloads.toLocaleString()})`,
+				},
+				403,
+			);
+		}
+	}
+
+	const needsVersionFiltering =
+		blockRules.length > 0 || hasRejected || userRules.length > 0;
+
+	// ── Fast path: nothing to filter → redirect to npm ───────────────────
+	if (!needsVersionFiltering) {
+		if (!tracked) {
+			c.executionCtx.waitUntil(maybeAutoTrack(c.env, packageName));
+		}
+		return c.redirect(upstreamPackageUrl(c.env, packageName), 302);
+	}
+
+	// ── Slow path: fetch full packument, apply filters, return ───────────
+	const upstream = await fetchUpstreamMetadata(c.env, packageName);
 	if (!upstream) {
 		return c.json({ error: "not found" }, 404);
 	}
 
 	applyBlockRules(upstream, blockRules);
-
-	const tracked = await getPackageByName(c.env.DB, packageName);
-
-	if (customerId) {
-		const [userRules, minDownloads] = await Promise.all([
-			getUserBlockRules(c.env.DB, customerId, packageName),
-			getUserMinDownloads(c.env.DB, customerId),
-		]);
+	if (userRules.length > 0) {
 		applyBlockRules(upstream, userRules);
-
-		if (
-			minDownloads != null &&
-			upstream.versions &&
-			Object.keys(upstream.versions).length > 0
-		) {
-			const downloads =
-				tracked?.weekly_downloads ?? (await fetchWeeklyDownloads(packageName));
-			if (downloads < minDownloads) {
-				for (const ver of Object.keys(upstream.versions)) {
-					delete upstream.versions[ver];
-				}
-				if (upstream["dist-tags"]) {
-					for (const tag of Object.keys(upstream["dist-tags"])) {
-						delete upstream["dist-tags"][tag];
-					}
-				}
-			}
-		}
 	}
 
 	if (!tracked) {
-		c.executionCtx.waitUntil(maybeAutoTrack(c.env, packageName, upstream));
-
+		c.executionCtx.waitUntil(maybeAutoTrack(c.env, packageName));
 		const registryUrl = new URL(c.req.url).origin;
 		return c.json(rewriteTarballUrls(upstream, registryUrl));
 	}
 
 	if (upstream.versions) {
-		const knownVersions = await getAllKnownVersions(c.env.DB, tracked.id);
 		const statusByVersion = new Map(
 			knownVersions.map((v) => [v.version, v.status]),
 		);
@@ -183,7 +208,7 @@ async function handleMetadata(c: any) {
 
 		for (const ver of Object.keys(upstream.versions)) {
 			const status = statusByVersion.get(ver);
-			if (status && status !== "approved") {
+			if (status === "rejected") {
 				blocked.add(ver);
 				delete upstream.versions[ver];
 			} else if (!status) {
@@ -221,15 +246,16 @@ async function handleMetadata(c: any) {
 async function maybeAutoTrack(
 	env: Env,
 	packageName: string,
-	metadata: any,
 ): Promise<void> {
 	try {
 		const downloads = await fetchWeeklyDownloads(packageName);
 		if (downloads < MIN_WEEKLY_DOWNLOADS) return;
 
-		// Double-check it wasn't tracked between request start and now
 		const existing = await getPackageByName(env.DB, packageName);
 		if (existing) return;
+
+		const metadata = await fetchUpstreamMetadata(env, packageName);
+		if (!metadata) return;
 
 		const pkgId = crypto.randomUUID();
 		const latest = metadata["dist-tags"]?.latest;
@@ -243,7 +269,6 @@ async function maybeAutoTrack(
 			weeklyDownloads: downloads,
 		});
 
-		// Auto-approve last 20 versions via batch
 		const allVersions = Object.entries<any>(metadata.versions || {});
 		const recentVersions = allVersions.slice(-20);
 
@@ -314,7 +339,10 @@ async function fastTrackReview(
 
 			console.log(`[fast-track] Queued review for ${packageName}@${version}`);
 		} catch (err) {
-			console.error(`[fast-track] Failed for ${packageName}@${version}:`, err);
+			console.error(
+				`[fast-track] Failed for ${packageName}@${version}:`,
+				err,
+			);
 		}
 	}
 }
@@ -336,19 +364,18 @@ async function handleVersionMetadata(c: any) {
 	if (isTyposquat(packageName)) {
 		const original = getTyposquatOrigin(packageName);
 		return c.json(
-			{ error: `${packageName} is blocked — known typosquat of "${original}"` },
+			{
+				error: `${packageName} is blocked — known typosquat of "${original}"`,
+			},
 			403,
 		);
 	}
 
-	const [upstream, blockRules] = await Promise.all([
-		fetchUpstreamMetadata(c.env, packageName),
+	// ── DB checks first — no upstream fetch ──────────────────────────────
+	const [blockRules, tracked] = await Promise.all([
 		getBlockRules(c.env.DB, packageName),
+		getPackageByName(c.env.DB, packageName),
 	]);
-	const versionData = upstream?.versions?.[version];
-	if (!versionData) {
-		return c.json({ error: "not found" }, 404);
-	}
 
 	if (isVersionBlocked(version, blockRules)) {
 		return c.json(
@@ -365,15 +392,17 @@ async function handleVersionMetadata(c: any) {
 
 		if (isVersionBlocked(version, userRules)) {
 			return c.json(
-				{ error: `${packageName}@${version} is blocked by your block rules` },
+				{
+					error: `${packageName}@${version} is blocked by your block rules`,
+				},
 				403,
 			);
 		}
 
 		if (minDownloads != null) {
-			const tracked = await getPackageByName(c.env.DB, packageName);
 			const downloads =
-				tracked?.weekly_downloads ?? (await fetchWeeklyDownloads(packageName));
+				tracked?.weekly_downloads ??
+				(await fetchWeeklyDownloads(packageName));
 			if (downloads < minDownloads) {
 				return c.json(
 					{
@@ -385,17 +414,16 @@ async function handleVersionMetadata(c: any) {
 		}
 	}
 
-	const tracked = await getPackageByName(c.env.DB, packageName);
 	if (tracked) {
 		const ver = await getVersionByPackageAndVersion(
 			c.env.DB,
 			tracked.id,
 			version,
 		);
-		if (ver && ver.status !== "approved") {
+		if (ver && ver.status === "rejected") {
 			return c.json(
 				{
-					error: `${packageName}@${version} is ${ver.status} — not yet available`,
+					error: `${packageName}@${version} is rejected — not available for install`,
 				},
 				403,
 			);
@@ -403,16 +431,26 @@ async function handleVersionMetadata(c: any) {
 		if (!ver) {
 			c.executionCtx.waitUntil(
 				fastTrackReview(c.env, tracked.id, packageName, [
-					{ version, tarballSha: versionData.dist?.shasum || "" },
+					{ version, tarballSha: "" },
 				]),
 			);
 		}
 	}
 
+	// ── Fetch only this version's data (tiny payload, fast) ──────────────
+	const versionData = await fetchUpstreamVersionMetadata(
+		c.env,
+		packageName,
+		version,
+	);
+	if (!versionData) {
+		return c.json({ error: "not found" }, 404);
+	}
+
 	const registryUrl = new URL(c.req.url).origin;
 	if (versionData.dist?.tarball) {
-		const upstreamUrl = new URL(versionData.dist.tarball);
-		const filename = upstreamUrl.pathname.split("/").pop();
+		const url = new URL(versionData.dist.tarball);
+		const filename = url.pathname.split("/").pop();
 		versionData.dist.tarball = `${registryUrl}/${packageName}/-/${filename}`;
 	}
 
