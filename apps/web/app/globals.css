@@ -1099,30 +1099,15 @@ html:not([data-anchor-scrolling]) {
 	background: rgba(255, 255, 255, 0.025) !important;
 }
 
-/* Sidebar footer - break the shared background between GitHub icon and theme switch */
-#nd-sidebar div:has(> [data-theme-toggle]) {
-	background: transparent !important;
-	border: none !important;
-	padding: 0 !important;
-	gap: 0.5rem;
-}
-
-/* Theme switch - give it its own contained background */
-#nd-sidebar [data-theme-toggle] {
-	background: rgba(255, 255, 255, 0.04);
-	border: 1px solid rgba(255, 255, 255, 0.06) !important;
-	border-radius: 6px !important;
-	padding: 2px !important;
-}
-
-/* GitHub icon - standalone, no background */
-#nd-sidebar div:has(> [data-theme-toggle]) > a {
-	opacity: 0.4;
+/* Sidebar header GitHub link */
+#nd-sidebar .sidebar-github-link {
+	opacity: 0.35;
 	transition: opacity 150ms ease;
-	background: transparent !important;
+	display: inline-flex;
+	align-items: center;
 }
 
-#nd-sidebar div:has(> [data-theme-toggle]) > a:hover {
+#nd-sidebar .sidebar-github-link:hover {
 	opacity: 0.85;
 }
 
@@ -1225,15 +1210,6 @@ html:not([data-anchor-scrolling]) {
 	border-radius: 0 !important;
 }
 
-/* Sidebar collapse button - subtle */
-#nd-docs-layout button[aria-label="Collapse Sidebar"] {
-	opacity: 0.3;
-	transition: opacity 150ms ease;
-}
-
-#nd-docs-layout button[aria-label="Collapse Sidebar"]:hover {
-	opacity: 0.7;
-}
 
 input[type="search"]::-webkit-search-cancel-button,
 input[type="search"]::-webkit-search-decoration,

@@ -22,18 +22,16 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-	const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(t){document.documentElement.className=t}}catch(e){}})()`;
-
 	return (
 		<html lang="en" className="dark" suppressHydrationWarning>
-			<head>
-				{/** biome-ignore lint/security/noDangerouslySetInnerHtml: theme script */}
-				<script dangerouslySetInnerHTML={{ __html: themeScript }} />
-			</head>
 			<body
 				className={`${fontSans.variable} ${fontMono.variable} font-sans antialiased`}
 			>
-				<RootProvider>{children}</RootProvider>
+				<RootProvider
+					theme={{ defaultTheme: "dark", enabled: false }}
+				>
+					{children}
+				</RootProvider>
 			</body>
 		</html>
 	);

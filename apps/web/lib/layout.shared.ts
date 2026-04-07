@@ -6,6 +6,8 @@ export function baseOptions(): BaseLayoutProps {
 			title: "better-npm.",
 			url: "/",
 		},
-		githubUrl: "https://github.com/better-auth/better-npm",
+		themeSwitch: {
+			enabled: false,
+		},
 	};
 }
