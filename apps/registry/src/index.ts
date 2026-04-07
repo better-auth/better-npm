@@ -105,7 +105,7 @@ async function proxyToNpm(c: any) {
   const res = await fetch(upstream.toString(), { method, headers, body });
   let responseBody = await res.text();
 
-  const registryUrl = c.env.REGISTRY_URL || new URL(c.req.url).origin;
+  const registryUrl = new URL(c.req.url).origin;
   responseBody = responseBody.replaceAll("https://registry.npmjs.org", registryUrl);
 
   return new Response(responseBody, {
