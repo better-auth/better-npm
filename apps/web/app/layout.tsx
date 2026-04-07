@@ -8,8 +8,11 @@ const fontSans = Geist({ subsets: ["latin"], variable: "--font-sans" });
 const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-	title:
-		"better-npm: Every npm package release, vetted before it reaches your node_modules",
+	title: {
+		default:
+			"better-npm: Every npm package release, vetted before it reaches your node_modules",
+		template: "%s | better npm",
+	},
 	description:
 		"An open-source npm registry proxy that scans every package release for malicious code, typosquatting, and supply chain attacks.",
 	openGraph: {
