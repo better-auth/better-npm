@@ -127,18 +127,15 @@ app.get("/api/internal/user/stats", async (c) => {
   const now = Date.now();
 
   if (!customer) {
-    const packages = await db
-      .prepare("SELECT COUNT(*) as count FROM package")
-      .first<{ count: number }>();
     return c.json({
       installsToday: 0,
       installsWeek: 0,
       totalInstalls: 0,
-      packages: packages?.count || 0,
+      packages: 0,
     });
   }
 
-  const [installsToday, installsWeek, totalInstalls, packages] =
+  const [installsToday, installsWeek, totalInstalls, distinctUserPackages] =
     await Promise.all([
       db
         .prepare(
@@ -159,7 +156,10 @@ app.get("/api/internal/user/stats", async (c) => {
         .bind(customer.id)
         .first<{ count: number }>(),
       db
-        .prepare("SELECT COUNT(*) as count FROM package")
+        .prepare(
+          "SELECT COUNT(DISTINCT package_name) as count FROM install WHERE customer_id = ?",
+        )
+        .bind(customer.id)
         .first<{ count: number }>(),
     ]);
 
@@ -167,7 +167,7 @@ app.get("/api/internal/user/stats", async (c) => {
     installsToday: installsToday?.count || 0,
     installsWeek: installsWeek?.count || 0,
     totalInstalls: totalInstalls?.count || 0,
-    packages: packages?.count || 0,
+    packages: distinctUserPackages?.count || 0,
   });
 });
 
