@@ -1,6 +1,7 @@
 name = "better-npm-registry"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
+account_id = "91a50de89423668f82c67a17da27fcf0"
 
 [vars]
 UPSTREAM_REGISTRY = "https://registry.npmjs.org"
